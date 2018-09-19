@@ -1,0 +1,287 @@
+package capstone.uoit.ca.lifenoteapp.functions.Notes.DisplayNotes;
+
+import android.content.ContentValues;
+import android.content.Context;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteException;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Log;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+
+import capstone.uoit.ca.lifenoteapp.functions.Graphs.CodifiedHashMapManager;
+import capstone.uoit.ca.lifenoteapp.functions.Notes.CreateNotes.Note;
+import capstone.uoit.ca.lifenoteapp.functions.Notes.CreateNotes.NoteLayoutDBHelper;
+
+/**
+ * Created by Peter on 16/01/16.
+ */
+public class NoteDBHelper extends SQLiteOpenHelper {
+    private static NoteDBHelper ourInstance;
+    public static final int DATABASE_VERSION = 1;
+    public static final String DATABASE_FILENAME = "notesfive.db";
+    public static final String TABLE_NAME = "Notes";
+    Context context;
+
+    public static NoteDBHelper getInstance(Context context) {
+        if (ourInstance == null) {
+            ourInstance = new NoteDBHelper(context.getApplicationContext());
+        }
+        return ourInstance;
+    }
+
+    private NoteDBHelper(Context context) {
+        super(context, DATABASE_FILENAME, null, DATABASE_VERSION);
+        this.context = context;
+    }
+
+    // don't forget to use the column name '_id' for your primary key
+    public static final String CREATE_STATEMENT = "CREATE TABLE " + TABLE_NAME + "(" +
+            "  _id integer primary key autoincrement, " +
+            "  layoutId long not null, " +
+            "  name text not null, " +
+            "  date text not null, " +
+            "  time text not null, " +
+            "  docName text, " +
+            "  docDetails text, " +
+            "  illName text, " +
+            "  illSymptoms text, " +
+            "  illSeverity integer, " +
+            "  weight integer, " +
+            "  height integer, " +
+            "  tags text " +
+            ")";
+    public static final String DROP_STATEMENT = "DROP TABLE " + TABLE_NAME;
+
+    @Override
+    public void onCreate(SQLiteDatabase database) {
+        database.execSQL(CREATE_STATEMENT);
+    }
+
+    @Override
+    public void onUpgrade(SQLiteDatabase database, int oldVersion, int newVersion) {
+        // the implementation below is adequate for the first version
+        // however, if we change our table at all, we'd need to execute code to move the data
+        // to the new table structure, then delete the old tables (renaming the new ones)
+
+        // the current version destroys all existing data
+        database.execSQL(DROP_STATEMENT);
+        database.execSQL(CREATE_STATEMENT);
+    }
+
+    public Note createNote(Note note) {
+        // create the object
+//        Note note = new Note(modules);
+
+        // obtain a database connection
+        SQLiteDatabase database = this.getWritableDatabase();
+
+        ContentValues values = new ContentValues();
+        values.put("layoutId", note.getLayout().getId());
+        values.put("name", note.getName());
+        values.put("date", note.getDate());
+        values.put("time", note.getTime());
+        values.put("docName", note.getDocName());
+        values.put("docDetails", note.getDocDetails());
+        values.put("illName", note.getIllName());
+        values.put("illSymptoms", note.getIllSymptoms());
+        values.put("illSeverity", note.getIllSeverity());
+        values.put("weight", note.getWeight());
+        values.put("height", note.getHeight());
+        values.put("tags", arrayListToString(note.getCodifiedWords()));
+
+        long id = database.insert(TABLE_NAME, null, values);
+
+        // assign the Id of the new database row as the Id of the object
+        note.setId(id);
+        return note;
+    }
+
+    private String arrayListToString(ArrayList<String> list) {
+        //arrayList to JSON
+        try {
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("tagsArray", new JSONArray(list));
+            return jsonObject.toString();
+        } catch (JSONException e) {
+            Log.e("NoteHelperDB", "ArrayListToString: Unexpected JSON Error");
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private ArrayList<String> stringToArrayList(String listAsString) {
+        try {
+            ArrayList<String> tagsList = new ArrayList<>();
+            JSONArray jsonArray = (new JSONObject(listAsString)).optJSONArray("tagsArray");
+            for (int i=0;i<jsonArray.length();i++){
+                tagsList.add(jsonArray.get(i).toString());
+            }
+            return tagsList;
+        } catch (JSONException e) {
+            Log.e("NoteHelperDB", "createNote: Unexpected JSON Error 2");
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public Note getNote(long id) {
+        Note note = null;
+
+        // obtain a database connection
+        SQLiteDatabase database = this.getWritableDatabase();
+
+        // retrieve the note from the database
+        String[] columns = new String[] {
+                "layoutId",
+                "name",
+                "date",
+                "time",
+                "docName",
+                "docDetails",
+                "illName",
+                "illSymptoms",
+                "illSeverity",
+                "weight",
+                "height",
+                "tags"
+        };
+        Cursor cursor = database.query(TABLE_NAME, columns, "_id = ?", new String[]{"" + id}, "", "", "");
+        if (cursor.getCount() >= 1) {
+            cursor.moveToFirst();
+            NoteLayoutDBHelper dbHelper = NoteLayoutDBHelper.getInstance(context);
+            note = new Note(
+                    dbHelper.getNoteLayout2(cursor.getLong(0)),
+                    cursor.getString(1),
+                    cursor.getString(2),
+                    cursor.getString(3),
+                    cursor.getString(4),
+                    cursor.getString(5),
+                    cursor.getString(6),
+                    cursor.getString(7),
+                    cursor.getInt(8),
+                    cursor.getInt(9),
+                    cursor.getInt(10),
+                    stringToArrayList(cursor.getString(11))
+            );
+            note.setId(id);
+        }
+        Log.i("DatabaseAccess", "getNote(" + id + "):  note: " + note);
+        return note;
+    }
+
+    public ArrayList<Note> getAllNotes() {
+        ArrayList<Note> notes = new ArrayList<Note>();
+
+        // obtain a database connection
+        SQLiteDatabase database = this.getWritableDatabase();
+
+        // retrieve the note from the database
+        String[] columns = new String[] { "_id",
+                "layoutId",
+                "name",
+                "date",
+                "time",
+                "docName",
+                "docDetails",
+                "illName",
+                "illSymptoms",
+                "illSeverity",
+                "weight",
+                "height",
+                "tags"
+        };
+        try {
+            Cursor cursor = database.query(TABLE_NAME, columns, "", new String[]{}, "", "", "");
+            if (cursor.getCount() >= 1) {
+                cursor.moveToFirst();
+                do {
+                    // collect the note data, and place it into a note object
+                    long id = Long.parseLong(cursor.getString(0));
+                    NoteLayoutDBHelper dbHelper = NoteLayoutDBHelper.getInstance(context);
+                    Note note = new Note(
+                            dbHelper.getNoteLayout2(cursor.getLong(1)),
+                            cursor.getString(2),
+                            cursor.getString(3),
+                            cursor.getString(4),
+                            cursor.getString(5),
+                            cursor.getString(6),
+                            cursor.getString(7),
+                            cursor.getString(8),
+                            cursor.getInt(9),
+                            cursor.getInt(10),
+                            cursor.getInt(11),
+                            stringToArrayList(cursor.getString(12))
+                    );
+                    note.setId(id);
+
+                    // add the current note to the list
+                    notes.add(note);
+
+                    // advance to the next row in the results
+                    cursor.moveToNext();
+                } while (!cursor.isAfterLast());
+            }
+        } catch (SQLiteException databaseEmpty) {
+            databaseEmpty.printStackTrace();
+        }
+        Log.i("DatabaseAccess", "getAllNotes():  num: " + notes.size());
+        return notes;
+    }
+
+    public boolean updateNote(Note note) {
+        // obtain a database connection
+        SQLiteDatabase database = this.getWritableDatabase();
+
+        // update the data in the database
+        ContentValues values = new ContentValues();
+        values.put("layoutId", note.getLayout().getId());
+        values.put("name", note.getName());
+        values.put("date", note.getDate());
+        values.put("time", note.getTime());
+        values.put("docName", note.getDocName());
+        values.put("docDetails", note.getDocDetails());
+        values.put("illName", note.getIllName());
+        values.put("illSymptoms", note.getIllSymptoms());
+        values.put("illSeverity", note.getIllSeverity());
+        values.put("weight", note.getWeight());
+        values.put("height", note.getHeight());
+        values.put("tags", arrayListToString(note.getCodifiedWords()));
+
+        int numRowsAffected = database.update(TABLE_NAME, values, "_id = ?", new String[] { "" + note.getId() });
+
+        Log.i("DatabaseAccess", "updateNote(" + note + "):  numRowsAffected: " + numRowsAffected);
+
+        // verify that the note was updated successfully
+        return (numRowsAffected == 1);
+    }
+
+    public boolean deleteNote(long id) {
+        // obtain a database connection
+        SQLiteDatabase database = this.getWritableDatabase();
+
+        // delete the note
+        int numRowsAffected = database.delete(TABLE_NAME, "_id = ?", new String[]{"" + id});
+
+        Log.i("DatabaseAccess", "deleteNote(" + id + "):  numRowsAffected: " + numRowsAffected);
+
+        // verify that the note was deleted successfully
+        return (numRowsAffected == 1);
+    }
+
+    public void deleteAllNotes() {
+        // obtain a database connection
+        SQLiteDatabase database = this.getWritableDatabase();
+
+        // delete the note
+        int numRowsAffected = database.delete(TABLE_NAME, "", new String[] {});
+
+        Log.i("DatabaseAccess", "deleteAllNotes():  numRowsAffected: " + numRowsAffected);
+    }
+}
